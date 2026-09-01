@@ -9,9 +9,8 @@
 
 | Service | URL |
 |---|---|
-| Frontend | _Vercel URL after deployment_ |
-| Backend API | _Render URL after deployment_ |
-| Health Check | `<backend-url>/health` |
+| Frontend | https://reconcile-x-smart-account-reconcili.vercel.app |
+| GitHub | https://github.com/apeksha705/ReconcileX-Smart-Account-Reconciliation |
 
 ---
 
