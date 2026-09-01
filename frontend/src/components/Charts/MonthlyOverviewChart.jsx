@@ -1,33 +1,69 @@
-import React from 'react';
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer
-} from 'recharts';
+import React, { useMemo } from 'react';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
-export default function MonthlyOverviewChart() {
-  const monthlyData = [
-    { month: 'May', accuracy: 88, volume: 890, amount: '₹14.2L' },
-    { month: 'Jun', accuracy: 91, volume: 1040, amount: '₹18.9L' },
-    { month: 'Jul', accuracy: 93, volume: 1180, amount: '₹22.4L' },
-    { month: 'Aug', accuracy: 96, volume: 1248, amount: '₹26.8L' },
-  ];
+/**
+ * MonthlyOverviewChart
+ * @param {Array} batches - reconciliation history batches from the API (optional)
+ * When batches are provided, shows the last 4 months of real match accuracy.
+ * Falls back to illustrative static data so the chart is never blank.
+ */
+export default function MonthlyOverviewChart({ batches = [] }) {
+  const monthlyData = useMemo(() => {
+    if (batches && batches.length > 0) {
+      // Group batches by month, last 4 months
+      const monthMap = {};
+      for (const b of batches) {
+        if (!b.date) continue;
+        const d = new Date(b.date);
+        const key = d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+        if (!monthMap[key]) monthMap[key] = { total: 0, matched: 0, transactions: 0 };
+        monthMap[key].total       += b.totalTransactions || 0;
+        monthMap[key].matched     += b.matched || 0;
+        monthMap[key].transactions += b.totalTransactions || 0;
+      }
+      const sorted = Object.entries(monthMap)
+        .sort((a, b) => new Date(a[0]) - new Date(b[0]))
+        .slice(-4);
+
+      if (sorted.length > 0) {
+        return sorted.map(([label, v]) => ({
+          month:    label.split(' ')[0],
+          accuracy: v.total > 0 ? Math.round((v.matched / v.total) * 100) : 0,
+          volume:   v.transactions,
+          amount:   '',
+        }));
+      }
+    }
+    // Fallback illustrative data
+    return [
+      { month: 'May', accuracy: 88, volume: 890 },
+      { month: 'Jun', accuracy: 91, volume: 1040 },
+      { month: 'Jul', accuracy: 93, volume: 1180 },
+      { month: 'Aug', accuracy: 96, volume: 1248 },
+    ];
+  }, [batches]);
+
+  // Calculate growth vs first entry
+  const growth = monthlyData.length >= 2
+    ? (monthlyData[monthlyData.length - 1].accuracy - monthlyData[0].accuracy).toFixed(1)
+    : null;
 
   return (
     <div className="bg-[#FAF9F6] p-5 rounded-2xl border border-[#E2DFD4] shadow-xs flex flex-col justify-between h-full">
       <div className="flex items-center justify-between mb-2">
         <div>
           <h4 className="text-sm font-black text-[#1A1A1A]">Monthly Accuracy Trend</h4>
-          <p className="text-xs text-[#6B786B] font-medium">AI learning rate over 4 cycles</p>
+          <p className="text-xs text-[#6B786B] font-medium">Match rate over last 4 cycles</p>
         </div>
-        <div className="text-right">
-          <span className="text-xs font-mono font-bold text-[#0B3C2C] bg-[#D4E2D4] px-2.5 py-0.5 rounded-md border border-[#B8CEB8]">
-            +8.2% Growth
+        {growth !== null && (
+          <span className={`text-xs font-mono font-bold px-2.5 py-0.5 rounded-md border ${
+            Number(growth) >= 0
+              ? 'text-[#0B3C2C] bg-[#D4E2D4] border-[#B8CEB8]'
+              : 'text-[#9E3626] bg-[#FDEBE8] border-[#F2C0B8]'
+          }`}>
+            {Number(growth) >= 0 ? '+' : ''}{growth}% Change
           </span>
-        </div>
+        )}
       </div>
 
       <div className="h-36 w-full my-2">
@@ -35,41 +71,17 @@ export default function MonthlyOverviewChart() {
           <AreaChart data={monthlyData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
             <defs>
               <linearGradient id="accuracyForestGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#0B3C2C" stopOpacity={0.4} />
+                <stop offset="5%"  stopColor="#0B3C2C" stopOpacity={0.4} />
                 <stop offset="95%" stopColor="#D4E2D4" stopOpacity={0.05} />
               </linearGradient>
             </defs>
-            <XAxis
-              dataKey="month"
-              axisLine={false}
-              tickLine={false}
-              tick={{ fontSize: 11, fill: '#6B786B' }}
-            />
-            <YAxis
-              domain={[75, 100]}
-              axisLine={false}
-              tickLine={false}
-              tick={{ fontSize: 10, fill: '#6B786B' }}
-              tickFormatter={(v) => `${v}%`}
-            />
+            <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#6B786B' }} />
+            <YAxis domain={[70, 100]} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6B786B' }} tickFormatter={(v) => `${v}%`} />
             <Tooltip
               formatter={(value) => [`${value}% Auto-Matched`, 'Accuracy']}
-              contentStyle={{
-                backgroundColor: '#1A1A1A',
-                color: '#FAF9F6',
-                borderRadius: '12px',
-                border: '1px solid #333',
-                fontSize: '11px',
-              }}
+              contentStyle={{ backgroundColor: '#1A1A1A', color: '#FAF9F6', borderRadius: '12px', border: '1px solid #333', fontSize: '11px' }}
             />
-            <Area
-              type="monotone"
-              dataKey="accuracy"
-              stroke="#0B3C2C"
-              strokeWidth={2.5}
-              fillOpacity={1}
-              fill="url(#accuracyForestGrad)"
-            />
+            <Area type="monotone" dataKey="accuracy" stroke="#0B3C2C" strokeWidth={2.5} fillOpacity={1} fill="url(#accuracyForestGrad)" />
           </AreaChart>
         </ResponsiveContainer>
       </div>

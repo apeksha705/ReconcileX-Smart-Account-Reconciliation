@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Download,
   FileText,
@@ -14,20 +14,26 @@ import { reconciliationService } from '../services/reconciliationService';
 import { formatCurrency } from '../utils/formatters';
 
 export default function Reports({ showToast }) {
-  const [stats, setStats] = useState(null);
+  const [stats, setStats]               = useState(null);
   const [transactions, setTransactions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [history, setHistory]           = useState([]);
+  const [settings, setSettings]         = useState(null);
+  const [loading, setLoading]           = useState(true);
   const [showExecutiveModal, setShowExecutiveModal] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [s, txns] = await Promise.all([
+      const [s, txns, hist, sett] = await Promise.all([
         reconciliationService.getDashboardStats(),
-        reconciliationService.getTransactions()
+        reconciliationService.getTransactions(),
+        reconciliationService.getHistory(),
+        reconciliationService.getSettings(),
       ]);
       setStats(s);
       setTransactions(txns);
+      setHistory(hist);
+      setSettings(sett);
     } catch (err) {
       if (showToast) showToast('warning', 'Failed to load report data', err.message);
     } finally {
@@ -35,9 +41,31 @@ export default function Reports({ showToast }) {
     }
   };
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  useEffect(() => { loadData(); }, []);
+
+  // BUG-27 fix: Build audit breakdown table dynamically from real transactions
+  const categoryBreakdown = useMemo(() => {
+    if (!transactions || transactions.length === 0) return [];
+    const map = {};
+    for (const t of transactions) {
+      const cat = t.category || 'General';
+      if (!map[cat]) map[cat] = { count: 0, bank: 0, inv: 0, matched: 0 };
+      map[cat].count++;
+      map[cat].bank += Number(t.bankAmount    || t.bank_amount    || 0);
+      map[cat].inv  += Number(t.invoiceAmount || t.invoice_amount || 0);
+      if (t.status === 'matched') map[cat].matched++;
+    }
+    return Object.entries(map)
+      .map(([cat, v]) => ({
+        cat,
+        count:   v.count,
+        bank:    v.bank,
+        inv:     v.inv,
+        acc:     v.count > 0 ? `${Math.round((v.matched / v.count) * 100)}%` : '0%',
+        status:  v.matched === v.count ? 'Reconciled' : v.matched > 0 ? 'Partial' : 'Pending',
+      }))
+      .sort((a, b) => b.bank - a.bank);
+  }, [transactions]);
 
   const handleExportCSV = () => {
     reconciliationService.exportTransactionsCSV(transactions);
@@ -45,6 +73,18 @@ export default function Reports({ showToast }) {
       showToast('success', 'Audit Report Exported', 'Downloaded complete 3-way reconciliation ledger as CSV');
     }
   };
+
+  // BUG-28 fix: use settings for entity info in executive summary
+  const businessName = settings?.businessName || 'Apex Retail & Logistics Pvt Ltd';
+  const gstin        = settings?.gstin        || '27AAACA9918B1ZX';
+
+  // Determine billing period from oldest and newest transaction dates
+  const billingPeriod = useMemo(() => {
+    const dates = transactions.map((t) => t.date).filter(Boolean).sort();
+    if (dates.length === 0) return '01 Aug 2026 – 31 Aug 2026';
+    const fmt = (d) => new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    return `${fmt(dates[0])} – ${fmt(dates[dates.length - 1])}`;
+  }, [transactions]);
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-8 bg-[#FAF9F6]">
@@ -63,8 +103,6 @@ export default function Reports({ showToast }) {
             Generate executive compliance summaries, 3-way balance proof certificates, and CSV ledgers.
           </p>
         </div>
-
-        {/* Action Buttons */}
         <div className="flex items-center gap-3">
           <button
             onClick={handleExportCSV}
@@ -73,7 +111,6 @@ export default function Reports({ showToast }) {
             <Download className="w-3.5 h-3.5 text-[#6B786B]" />
             <span>Export CSV</span>
           </button>
-
           <button
             onClick={() => setShowExecutiveModal(true)}
             className="px-4 py-2 text-xs font-bold text-[#FAF9F6] bg-[#0B3C2C] hover:bg-[#134E39] rounded-xl shadow-sm shadow-[#0B3C2C]/30 flex items-center gap-2 transition-all hover:scale-[1.02]"
@@ -87,73 +124,62 @@ export default function Reports({ showToast }) {
       {/* Financial KPIs Banner */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-5 bg-[#FAF9F6] rounded-2xl border border-[#E2DFD4] shadow-xs">
-          <p className="text-xs font-bold uppercase tracking-wider text-[#6B786B]">
-            Total Reconciled Volume
-          </p>
+          <p className="text-xs font-bold uppercase tracking-wider text-[#6B786B]">Total Reconciled Volume</p>
           <h3 className="mt-2 text-2xl lg:text-3xl font-black text-[#1A1A1A] font-mono">
-            {formatCurrency(stats?.totalAmount || 589250)}
+            {formatCurrency(stats?.totalAmount ?? 0)}
           </h3>
           <p className="text-xs text-[#6B786B] mt-2 font-medium">
-            Across {stats?.totalTransactions || 24} vendor billing cycles
+            Across {stats?.totalTransactions ?? 0} vendor billing cycles
           </p>
         </div>
-
         <div className="p-5 bg-[#FAF9F6] rounded-2xl border border-[#B8CEB8] bg-gradient-to-b from-[#D4E2D4]/30 to-[#FAF9F6] shadow-xs">
-          <p className="text-xs font-bold uppercase tracking-wider text-[#0B3C2C]">
-            Automated Match Rate
-          </p>
+          <p className="text-xs font-bold uppercase tracking-wider text-[#0B3C2C]">Automated Match Rate</p>
           <h3 className="mt-2 text-2xl lg:text-3xl font-black text-[#0B3C2C] font-mono">
-            {stats?.matchRate || 94}%
+            {stats?.matchRate ?? 0}%
           </h3>
           <p className="text-xs text-[#0B3C2C] mt-2 flex items-center gap-1 font-bold">
             <CheckCircle2 className="w-3.5 h-3.5" />
-            {formatCurrency(stats?.matchedAmount || 520000)} settled
+            {formatCurrency(stats?.matchedAmount ?? 0)} settled
           </p>
         </div>
-
         <div className="p-5 bg-[#FAF9F6] rounded-2xl border border-[#E8D8B0] bg-gradient-to-b from-[#FAF0D9]/30 to-[#FAF9F6] shadow-xs">
-          <p className="text-xs font-bold uppercase tracking-wider text-[#8A5C14]">
-            Exceptions In Review
-          </p>
+          <p className="text-xs font-bold uppercase tracking-wider text-[#8A5C14]">Exceptions In Review</p>
           <h3 className="mt-2 text-2xl lg:text-3xl font-black text-[#8A5C14] font-mono">
-            {stats?.needsReview || 0}
+            {stats?.needsReview ?? 0}
           </h3>
           <p className="text-xs text-[#8A5C14] mt-2 font-medium">
-            Value at risk: {formatCurrency(stats?.reviewAmount || 42500)}
+            Value at risk: {formatCurrency(stats?.reviewAmount ?? 0)}
           </p>
         </div>
-
         <div className="p-5 bg-[#FAF9F6] rounded-2xl border border-[#F2C0B8] bg-gradient-to-b from-[#FDEBE8]/30 to-[#FAF9F6] shadow-xs">
-          <p className="text-xs font-bold uppercase tracking-wider text-[#9E3626]">
-            Unmatched Records
-          </p>
+          <p className="text-xs font-bold uppercase tracking-wider text-[#9E3626]">Unmatched Records</p>
           <h3 className="mt-2 text-2xl lg:text-3xl font-black text-[#9E3626] font-mono">
-            {stats?.unmatched || 0}
+            {stats?.unmatched ?? 0}
           </h3>
           <p className="text-xs text-[#9E3626] mt-2 font-medium">
-            Missing tax invoice or slip ({formatCurrency(stats?.unmatchedAmount || 26750)})
+            Missing tax invoice or slip ({formatCurrency(stats?.unmatchedAmount ?? 0)})
           </p>
         </div>
       </div>
 
-      {/* Charts Grid */}
+      {/* Charts Grid — pass real data */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1">
           <ReconciliationDonutChart
-            matched={stats?.matched || 0}
-            needsReview={stats?.needsReview || 0}
-            unmatched={stats?.unmatched || 0}
+            matched={stats?.matched ?? 0}
+            needsReview={stats?.needsReview ?? 0}
+            unmatched={stats?.unmatched ?? 0}
           />
         </div>
         <div className="lg:col-span-1">
-          <TransactionTrendChart />
+          <TransactionTrendChart transactions={transactions} />
         </div>
         <div className="lg:col-span-1">
-          <MonthlyOverviewChart />
+          <MonthlyOverviewChart batches={history} />
         </div>
       </div>
 
-      {/* Category Breakdown Table */}
+      {/* BUG-27 FIX: Dynamic Category Breakdown Table */}
       <div className="bg-[#FAF9F6] rounded-2xl border border-[#E2DFD4] shadow-xs p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div>
@@ -169,52 +195,54 @@ export default function Reports({ showToast }) {
           </span>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="bg-[#F0EFEB] border-b border-[#DBD7CB] text-[#6B786B] uppercase font-black text-[10px]">
-                <th className="py-3 px-4">Category</th>
-                <th className="py-3 px-4 text-center">Transactions</th>
-                <th className="py-3 px-4 text-right">Bank Debit Total</th>
-                <th className="py-3 px-4 text-right">Invoice Total</th>
-                <th className="py-3 px-4 text-center">Match Accuracy</th>
-                <th className="py-3 px-4 text-center">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#EAE7DC] font-medium">
-              {[
-                { cat: 'Cloud Infrastructure & SaaS', count: 7, bank: 119650, inv: 119650, acc: '98.5%', status: 'Reconciled' },
-                { cat: 'Office & Facilities', count: 6, bank: 87320, inv: 87320, acc: '95.0%', status: 'Reconciled' },
-                { cat: 'Shipping & Logistics', count: 4, bank: 44050, inv: 44050, acc: '92.4%', status: 'Reconciled' },
-                { cat: 'Professional & Legal Services', count: 3, bank: 189000, inv: 195000, acc: '82.0%', status: 'TDS Review' },
-                { cat: 'Utilities & Connectivity', count: 3, bank: 62590, inv: 62590, acc: '99.0%', status: 'Reconciled' },
-                { cat: 'Marketing & Advertising', count: 2, bank: 63500, inv: 63500, acc: '74.0%', status: 'Dup Flagged' },
-              ].map((row, idx) => (
-                <tr key={idx} className="hover:bg-[#EBF2EB]/50">
-                  <td className="py-3.5 px-4 font-bold text-[#1A1A1A]">{row.cat}</td>
-                  <td className="py-3.5 px-4 text-center font-mono">{row.count}</td>
-                  <td className="py-3.5 px-4 text-right font-mono font-bold text-[#1A1A1A]">{formatCurrency(row.bank)}</td>
-                  <td className="py-3.5 px-4 text-right font-mono text-[#6B786B]">{formatCurrency(row.inv)}</td>
-                  <td className="py-3.5 px-4 text-center font-mono font-black text-[#0B3C2C]">{row.acc}</td>
-                  <td className="py-3.5 px-4 text-center">
-                    <span
-                      className={`px-2.5 py-0.5 rounded-md text-[10px] font-bold ${
+        {loading ? (
+          <div className="py-8 text-center">
+            <div className="w-6 h-6 border-2 border-[#0B3C2C] border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+            <p className="text-xs text-[#6B786B]">Loading breakdown...</p>
+          </div>
+        ) : categoryBreakdown.length === 0 ? (
+          <p className="text-xs text-[#6B786B] py-4 text-center">No transaction data available.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-[#F0EFEB] border-b border-[#DBD7CB] text-[#6B786B] uppercase font-black text-[10px]">
+                  <th className="py-3 px-4">Category</th>
+                  <th className="py-3 px-4 text-center">Transactions</th>
+                  <th className="py-3 px-4 text-right">Bank Debit Total</th>
+                  <th className="py-3 px-4 text-right">Invoice Total</th>
+                  <th className="py-3 px-4 text-center">Match Accuracy</th>
+                  <th className="py-3 px-4 text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#EAE7DC] font-medium">
+                {categoryBreakdown.map((row, idx) => (
+                  <tr key={idx} className="hover:bg-[#EBF2EB]/50">
+                    <td className="py-3.5 px-4 font-bold text-[#1A1A1A]">{row.cat}</td>
+                    <td className="py-3.5 px-4 text-center font-mono">{row.count}</td>
+                    <td className="py-3.5 px-4 text-right font-mono font-bold text-[#1A1A1A]">{formatCurrency(row.bank)}</td>
+                    <td className="py-3.5 px-4 text-right font-mono text-[#6B786B]">{formatCurrency(row.inv)}</td>
+                    <td className="py-3.5 px-4 text-center font-mono font-black text-[#0B3C2C]">{row.acc}</td>
+                    <td className="py-3.5 px-4 text-center">
+                      <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-bold ${
                         row.status === 'Reconciled'
                           ? 'bg-[#D4E2D4] text-[#0B3C2C]'
-                          : 'bg-[#FAF0D9] text-[#8A5C14]'
-                      }`}
-                    >
-                      {row.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                          : row.status === 'Partial'
+                          ? 'bg-[#FAF0D9] text-[#8A5C14]'
+                          : 'bg-[#FDEBE8] text-[#9E3626]'
+                      }`}>
+                        {row.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {/* Executive Summary Modal */}
+      {/* BUG-28 FIX: Executive Summary Modal — uses real settings + real stats */}
       {showExecutiveModal && (
         <div className="fixed inset-0 z-50 bg-[#1A1A1A]/70 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-[#FAF9F6] rounded-2xl border border-[#DCD8CC] shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] flex flex-col">
@@ -226,10 +254,7 @@ export default function Reports({ showToast }) {
                   <p className="text-[10px] text-[#A3A3A3]">ReconcileX Smart Account Reconciliation Certificate</p>
                 </div>
               </div>
-              <button
-                onClick={() => setShowExecutiveModal(false)}
-                className="text-[#8C8C8C] hover:text-[#FAF9F6] p-1"
-              >
+              <button onClick={() => setShowExecutiveModal(false)} className="text-[#8C8C8C] hover:text-[#FAF9F6] p-1">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -238,31 +263,38 @@ export default function Reports({ showToast }) {
               <div className="p-4 rounded-xl bg-[#F0EFEB] border border-[#DBD7CB] space-y-2">
                 <div className="flex justify-between">
                   <span className="font-semibold text-[#6B786B]">Business Entity:</span>
-                  <strong className="text-[#1A1A1A]">Apex Retail & Logistics Pvt Ltd</strong>
+                  <strong className="text-[#1A1A1A]">{businessName}</strong>
                 </div>
                 <div className="flex justify-between">
                   <span className="font-semibold text-[#6B786B]">Audit Billing Cycle:</span>
-                  <span className="font-mono text-[#1A1A1A]">01 Aug 2026 – 26 Aug 2026</span>
+                  <span className="font-mono text-[#1A1A1A]">{billingPeriod}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="font-semibold text-[#6B786B]">GSTIN Registered:</span>
-                  <span className="font-mono text-[#1A1A1A]">27AAACA9918B1ZX</span>
+                  <span className="font-mono text-[#1A1A1A]">{gstin}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="font-semibold text-[#6B786B]">Primary Current Account:</span>
-                  <span className="font-mono text-[#1A1A1A]">HDFC Bank ••••4829</span>
+                  <span className="font-semibold text-[#6B786B]">Total Transactions Analyzed:</span>
+                  <span className="font-mono font-bold text-[#1A1A1A]">{stats?.totalTransactions ?? 0}</span>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <h4 className="font-black text-[#1A1A1A] uppercase text-[11px] tracking-wider">
-                  Audit Findings Summary
-                </h4>
+                <h4 className="font-black text-[#1A1A1A] uppercase text-[11px] tracking-wider">Audit Findings Summary</h4>
                 <p>
-                  Out of <strong className="text-[#1A1A1A]">{stats?.totalTransactions || 24}</strong> multi-source entries analyzed, <strong className="text-[#0B3C2C]">{stats?.matched || 20} transactions ({stats?.matchRate || 94}%)</strong> satisfied strict 3-way correlation between bank debits, supplier GST invoices, and electronic payment records with &gt;90% confidence.
+                  Out of <strong>{stats?.totalTransactions ?? 0}</strong> multi-source entries analyzed,{' '}
+                  <strong className="text-[#0B3C2C]">
+                    {stats?.matched ?? 0} transactions ({stats?.matchRate ?? 0}%)
+                  </strong>{' '}
+                  satisfied strict 3-way correlation between bank debits, supplier GST invoices, and electronic payment records with &gt;90% confidence.
                 </p>
                 <p>
-                  <strong>{stats?.needsReview || 2} transactions</strong> were flagged for minor TDS withholding adjustments (e.g. ₹500 TDS on Zeta Tech Solutions; 10% 194J on Prime Legal Advisors). No systemic variance detected.
+                  <strong>{stats?.needsReview ?? 0} transactions</strong> were flagged for review (TDS withholding, vendor alias, or date discrepancies).{' '}
+                  <strong>{stats?.unmatched ?? 0} transactions</strong> remain unmatched pending additional documentation.
+                </p>
+                <p>
+                  Total reconciled volume: <strong className="font-mono">{formatCurrency(stats?.totalAmount ?? 0)}</strong>.
+                  Matched amount: <strong className="font-mono text-[#0B3C2C]">{formatCurrency(stats?.matchedAmount ?? 0)}</strong>.
                 </p>
               </div>
 
@@ -282,12 +314,8 @@ export default function Reports({ showToast }) {
                 <Printer className="w-3.5 h-3.5 text-[#6B786B]" />
                 <span>Print Certificate</span>
               </button>
-
               <button
-                onClick={() => {
-                  handleExportCSV();
-                  setShowExecutiveModal(false);
-                }}
+                onClick={() => { handleExportCSV(); setShowExecutiveModal(false); }}
                 className="px-4 py-2 text-xs font-bold text-[#FAF9F6] bg-[#0B3C2C] hover:bg-[#134E39] rounded-xl shadow-sm shadow-[#0B3C2C]/30 flex items-center gap-1.5"
               >
                 <Download className="w-3.5 h-3.5 text-[#D4E2D4]" />

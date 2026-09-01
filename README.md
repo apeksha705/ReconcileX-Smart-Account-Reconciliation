@@ -1,60 +1,174 @@
-# RECONCILEX — Smart Account Reconciliation
+# ReconcileX — Smart Account Reconciliation
 
-> **Production-Ready Smart Account Reconciliation Platform**  
-> Built with React 19, Tailwind CSS v4, React Router, Lucide Icons, and Recharts.
+> AI-powered 3-way reconciliation engine for Indian finance operations.
+> Matches bank statements, vendor GST invoices, and payment gateway records automatically — with TDS anomaly detection, duplicate flagging, and explainable confidence scoring.
 
 ---
 
-## 🚀 Quick Start
+## Live Demo
 
-All frontend application code is organized cleanly inside the [`frontend/`](./frontend) directory:
+| Service | URL |
+|---|---|
+| Frontend | _Vercel URL after deployment_ |
+| Backend API | _Render URL after deployment_ |
+| Health Check | `<backend-url>/health` |
 
-```bash
-cd frontend
-npm install
-npm run dev
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | React 19, Tailwind CSS v4, Vite, Recharts |
+| Backend | Node.js (ESM), Express.js |
+| Database | Supabase (PostgreSQL) |
+| Auth / Storage | Supabase service role |
+| Deployment | Vercel (frontend) + Render (backend) |
+
+---
+
+## Features
+
+- **7-Stage Reconciliation Engine** — Upload → Extract → Clean → Match → Detect → Review → Reconcile
+- **3-Way Matching** — Cross-correlates bank debits, supplier invoices, and payment gateway records
+- **TDS Anomaly Detection** — Flags 194C / 194J / 194H discrepancies with section citations
+- **Fuzzy Vendor Matching** — Levenshtein string similarity for alias detection
+- **Duplicate Payment Detection** — Flags identical vendor + amount within configurable time window
+- **Confidence Scoring** — Composite score: Amount (40%) + Vendor (30%) + Date (15%) + Reference (15%)
+- **Exceptions Queue** — Human-in-the-loop review workflow for disputed items
+- **Executive Summary Certificate** — GST GSTR-2B ready compliance report
+- **CSV Export** — Full reconciliation ledger download
+
+---
+
+## Project Structure
+
+```
+reconcilex/
+├── frontend/                  # React 19 + Tailwind CSS + Vite
+│   ├── src/
+│   │   ├── pages/             # Dashboard, Transactions, Exceptions, History, Reports, Settings, Reconciliation
+│   │   ├── components/        # StatCard, TransactionTable, Charts, Modals, etc.
+│   │   └── services/          # reconciliationService.js — API layer with mock fallback
+│   └── vercel.json            # SPA routing config
+│
+└── backend/                   # Node.js / Express REST API
+    ├── src/
+    │   ├── engine/            # matchingEngine.js, parsers.js, anomalyDetector.js
+    │   ├── controllers/       # dashboard, transactions, exceptions, reports, settings, reconciliation
+    │   ├── routes/            # Express routers
+    │   └── utils/             # seedData.js
+    ├── supabase_migration.sql  # Run this in Supabase SQL Editor first
+    └── .env.example           # Copy to .env and fill credentials
 ```
 
-The application will be accessible at `http://localhost:5173/`.
+---
+
+## Local Development
+
+### Prerequisites
+- Node.js >= 18
+- A free [Supabase](https://supabase.com) project
+
+### 1. Database Setup
+Open your Supabase project → SQL Editor → paste and run `backend/supabase_migration.sql`
+
+### 2. Backend
+```bash
+cd backend
+cp .env.example .env
+# Fill SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env
+npm install
+npm start
+# Server starts on http://localhost:5000
+# Database is auto-seeded on first boot
+```
+
+### 3. Frontend
+```bash
+cd frontend
+cp .env.example .env.local
+# Set VITE_API_URL=http://localhost:5000/api
+npm install
+npm run dev
+# App starts on http://localhost:5173
+```
 
 ---
 
-## 🌟 Core Application Workflow
+## Deployment
 
-1. **Sign In**: Open `http://localhost:5173/login` and enter your work credentials.
-2. **Dashboard Overview**:
-   - Inspect summary KPIs: **Total Transactions (1,248)**, **Matched (1,043)**, **Needs Review (127)**, and **Unmatched (78)**.
-   - Review live interactive charts: Status Breakdown Donut, 7-Day Velocity Bar Chart, and Monthly Accuracy Growth.
-3. **Execute 3-Way Reconciliation**:
-   - Click **"New Reconciliation"** or navigate to `/reconcile`.
-   - Click **"Load Sample Q3 Files"** to populate Bank Statements, Vendor Tax Invoices, and Payment Gateway records.
-   - Click **"Start Reconciliation"**.
-   - Watch the **7-Stage AI Engine** animate across:  
-     `01 Upload` → `02 Extract` → `03 Clean` → `04 Match` → `05 Detect` → `06 Review` → `07 Reconcile`
-   - Review the celebratory completion state and breakdown table.
-4. **Explainable AI Matching Evidence**:
-   - Click any transaction (e.g. `TXN-1042 ABC Supplies`) to open the **Explainable Audit Modal**.
-   - Inspect the **98% Visual Confidence Meter** and the **3-Way Cross-Source Comparison Matrix** (Bank Statement vs. Tax Invoice vs. Payment Record).
-5. **Human-in-the-Loop Exceptions Resolution**:
-   - Open `/exceptions` to inspect categorized issues (*Amount Mismatch / TDS*, *Missing Invoices*, *Duplicate Debits*, *Vendor Aliases*).
-   - Review `TXN-1087` (Zeta Tech Solutions ₹500 TDS difference) and click **"Approve & Match"** or **"Edit"**.
-   - Watch dashboard statistics update live across the entire session.
-6. **Executive Audit Reports**:
-   - Navigate to `/reports` to view the **GST ITC Compliance Ledger** and click **"Export CSV"** to download the ledger or **"Generate Executive Summary"** to print the certified audit certificate.
+### Backend → Render
+
+1. Go to [render.com](https://render.com) → New Web Service
+2. Connect this GitHub repo
+3. Settings:
+
+| Field | Value |
+|---|---|
+| Root Directory | `backend` |
+| Build Command | `npm install` |
+| Start Command | `node server.js` |
+
+4. Add environment variables:
+```
+SUPABASE_URL               = https://gvlxmagvpkioztntrvfm.supabase.co
+SUPABASE_SERVICE_ROLE_KEY  = <your service role key>
+NODE_ENV                   = production
+PORT                       = 5000
+CLIENT_ORIGIN              = https://reconcilex.vercel.app
+```
+
+### Frontend → Vercel
+
+1. Go to [vercel.com](https://vercel.com) → New Project
+2. Import this GitHub repo
+3. Settings:
+
+| Field | Value |
+|---|---|
+| Root Directory | `frontend` |
+| Framework | Vite |
+| Build Command | `npm run build` |
+| Output Directory | `dist` |
+
+4. Add environment variable:
+```
+VITE_API_URL = https://<your-render-service>.onrender.com/api
+```
 
 ---
 
-## 🏗️ Architecture & Backend Readiness
+## API Endpoints
 
-The frontend is built on a clean asynchronous service layer (`src/services/reconciliationService.js`) that mimics standard REST API contracts:
-
-| Frontend Service Method | Prepared Backend REST Endpoint | Purpose |
+| Method | Endpoint | Description |
 |---|---|---|
-| `reconciliationService.uploadFiles(files)` | `POST /api/reconciliation/upload` | Ingest multi-source CSV/PDF files |
-| `reconciliationService.startReconciliation(files)` | `POST /api/reconciliation/start` | Trigger 7-stage engine execution |
-| `reconciliationService.getTransactions(filters)` | `GET /api/transactions` | Query filtered/sorted ledger data |
-| `reconciliationService.getTransactionById(id)` | `GET /api/transactions/:id` | Fetch 3-way matching record details |
-| `reconciliationService.updateTransactionStatus(id, status)` | `PATCH /api/transactions/:id/status` | Approve, reject, or resolve item |
-| `reconciliationService.getDashboardStats()` | `GET /api/dashboard/stats` | Live reconciliation KPI metrics |
-| `reconciliationService.getExceptions(cat)` | `GET /api/exceptions` | Filtered review queue items |
-| `reconciliationService.exportTransactionsCSV()` | `GET /api/reports/export` | Download reconciled audit ledger |
+| `POST` | `/api/reconciliation/upload` | Upload 3 CSV/PDF files |
+| `POST` | `/api/reconciliation/start` | Run 7-stage matching engine |
+| `GET` | `/api/reconciliation/history` | List all batch runs |
+| `GET` | `/api/reconciliation/history/:id` | Single batch details |
+| `GET` | `/api/transactions` | Paginated, filtered transaction list |
+| `GET` | `/api/transactions/:id` | Single transaction with 3-way evidence |
+| `PATCH` | `/api/transactions/:id/status` | Update status + resolution notes |
+| `GET` | `/api/dashboard/stats` | KPI metrics |
+| `GET` | `/api/exceptions` | Exceptions queue with breakdown |
+| `GET` | `/api/reports/summary` | Category breakdown + quarterly metrics |
+| `GET` | `/api/reports/export` | CSV download of full ledger |
+| `GET` | `/api/settings` | Engine configuration |
+| `PUT` | `/api/settings` | Update engine configuration |
+| `GET` | `/health` | Server health check |
+
+---
+
+## Built for Omnikon National Hackathon 2026
+
+**Team:** Apeksha Shukla
+**Category:** FinTech / Enterprise SaaS
+**Problem:** Manual 3-way account reconciliation costs Indian finance teams 40+ hours per month and is error-prone at scale.
+**Solution:** ReconcileX automates the entire workflow with an AI matching engine, reduces reconciliation time by 90%, and produces GST-ready audit certificates.
+
+---
+
+## License
+
+MIT

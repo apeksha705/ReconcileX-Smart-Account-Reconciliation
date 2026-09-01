@@ -66,7 +66,7 @@ export default function History({ showToast }) {
   const totalBatches = historyList.length;
   const totalVolume = historyList.reduce((acc, b) => acc + (b.totalAmount || 0), 0);
   const avgMatchRate = totalBatches > 0
-    ? (historyList.reduce((acc, b) => acc + (b.matchRate || 0), 0) / totalBatches).toFixed(1)
+    ? (historyList.reduce((acc, b) => acc + (Number(b.matchRate) || 0), 0) / totalBatches).toFixed(1)
     : 0;
   const totalExceptions = historyList.reduce((acc, b) => acc + (b.needsReview || 0), 0);
 

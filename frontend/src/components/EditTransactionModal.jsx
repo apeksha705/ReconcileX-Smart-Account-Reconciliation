@@ -1,15 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Save } from 'lucide-react';
 import { formatCurrency } from '../utils/formatters';
 
+// NOTE: All hooks are declared BEFORE any conditional return to satisfy React Rules of Hooks.
 export default function EditTransactionModal({ transaction, isOpen, onClose, onSave }) {
-  if (!isOpen || !transaction) return null;
-
-  const [vendor, setVendor] = useState(transaction.vendor || '');
-  const [amount, setAmount] = useState(transaction.amount || '');
-  const [reference, setReference] = useState(transaction.reference || '');
+  const [vendor, setVendor] = useState('');
+  const [amount, setAmount] = useState('');
+  const [reference, setReference] = useState('');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Sync state when the transaction prop changes (e.g. opening a different record)
+  useEffect(() => {
+    if (transaction) {
+      setVendor(transaction.vendor || '');
+      setAmount(transaction.amount || '');
+      setReference(transaction.reference || '');
+      setNotes('');
+    }
+  }, [transaction]);
+
+  // Guard AFTER all hooks
+  if (!isOpen || !transaction) return null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -19,7 +31,7 @@ export default function EditTransactionModal({ transaction, isOpen, onClose, onS
         vendor,
         amount: Number(amount),
         reference,
-        notes: notes || 'Updated transaction attributes manually'
+        notes: notes || 'Updated transaction attributes manually',
       });
       onClose();
     } finally {
@@ -114,7 +126,7 @@ export default function EditTransactionModal({ transaction, isOpen, onClose, onS
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-5 py-2 text-xs font-bold text-[#FAF9F6] bg-[#0B3C2C] hover:bg-[#134E39] rounded-xl shadow-sm shadow-[#0B3C2C]/30 flex items-center gap-1.5"
+              className="px-5 py-2 text-xs font-bold text-[#FAF9F6] bg-[#0B3C2C] hover:bg-[#134E39] rounded-xl shadow-sm shadow-[#0B3C2C]/30 flex items-center gap-1.5 disabled:opacity-60"
             >
               <Save className="w-3.5 h-3.5" />
               <span>{isSubmitting ? 'Saving...' : 'Apply & Re-Match'}</span>

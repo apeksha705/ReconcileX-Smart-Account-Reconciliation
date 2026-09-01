@@ -5,8 +5,10 @@ import { INITIAL_TRANSACTIONS, INITIAL_HISTORY } from '../data/mockTransactions'
 // Set USE_LIVE_API = true  →  calls the Node.js/Express backend at API_BASE_URL
 // Set USE_LIVE_API = false →  runs entirely in localStorage (no backend needed)
 // ─────────────────────────────────────────────────────────────────────────────
-const USE_LIVE_API = false;
-const API_BASE_URL = 'http://localhost:5000/api';
+const USE_LIVE_API = true;
+// In development: set VITE_API_URL in frontend/.env.local
+// In production (Vercel): set VITE_API_URL in Vercel environment variables
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 // ─── Shared fetch helper ──────────────────────────────────────────────────────
 async function apiFetch(path, options = {}) {
@@ -406,10 +408,32 @@ export const reconciliationService = {
     return true;
   },
 
-  exportHistoryCSV() {
+  async exportHistoryCSV() {
+    if (USE_LIVE_API) {
+      // Fetch live history from API, then build CSV client-side
+      try {
+        const list = await apiFetch('/reconciliation/history');
+        const headers = ['Batch ID','Batch Name','Execution Date','Billing Period','Status','Total Transactions','Matched','Needs Review','Unmatched','Match Rate (%)','Total Amount (INR)','Initiated By'];
+        const rows = list.map((b) => [b.id, `"${(b.name||'').replace(/"/g,'""')}"`, b.date, `"${b.period||''}"`, b.status, b.totalTransactions, b.matched, b.needsReview, b.unmatched, Number(b.matchRate), b.totalAmount, `"${b.initiatedBy||''}"`]);
+        const csv  = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url  = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `ReconcileX_Audit_History_${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        return true;
+      } catch (e) {
+        console.warn('exportHistoryCSV live fetch failed:', e.message);
+        return false;
+      }
+    }
     const list = getStoredHistory();
     const headers = ['Batch ID','Batch Name','Execution Date','Billing Period','Status','Total Transactions','Matched','Needs Review','Unmatched','Match Rate (%)','Total Amount (INR)','Initiated By'];
-    const rows = list.map((b) => [b.id, `"${(b.name||'').replace(/"/g,'""')}"`, b.date, `"${b.period||''}"`, b.status, b.totalTransactions, b.matched, b.needsReview, b.unmatched, b.matchRate, b.totalAmount, `"${b.initiatedBy||''}"`]);
+    const rows = list.map((b) => [b.id, `"${(b.name||'').replace(/"/g,'""')}"`, b.date, `"${b.period||''}"`, b.status, b.totalTransactions, b.matched, b.needsReview, b.unmatched, Number(b.matchRate), b.totalAmount, `"${b.initiatedBy||''}"`]);
     const csv  = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url  = URL.createObjectURL(blob);

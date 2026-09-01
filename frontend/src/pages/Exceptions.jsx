@@ -68,12 +68,14 @@ export default function Exceptions({ showToast, onDataUpdated }) {
   };
 
   const categories = [
-    { id: 'all', label: 'All Exceptions', count: exceptions.length, icon: AlertOctagon },
-    { id: 'amount_mismatch', label: 'Amount Mismatch', count: breakdown?.amount_mismatch || 0, icon: Scale },
-    { id: 'missing_invoice', label: 'Missing Invoice', count: breakdown?.missing_records || 0, icon: FileQuestion },
-    { id: 'duplicate_transaction', label: 'Duplicate Payments', count: breakdown?.duplicate_transaction || 0, icon: Copy },
-    { id: 'vendor_mismatch', label: 'Vendor Name Diff', count: breakdown?.vendor_mismatch || 0, icon: Receipt },
-    { id: 'date_mismatch', label: 'Date Discrepancy', count: breakdown?.date_mismatch || 0, icon: Calendar },
+    { id: 'all',                   label: 'All Exceptions',     count: exceptions.length,                        icon: AlertOctagon },
+    { id: 'amount_mismatch',       label: 'Amount Mismatch',    count: breakdown?.amount_mismatch       || 0,    icon: Scale },
+    // BUG-09/33 fix: use 'missing_records' as the filter id since that's what
+    // the backend exception_type column stores (missing_invoice is rolled into it)
+    { id: 'missing_records',       label: 'Missing Invoice',    count: breakdown?.missing_records       || 0,    icon: FileQuestion },
+    { id: 'duplicate_transaction', label: 'Duplicate Payments', count: breakdown?.duplicate_transaction || 0,    icon: Copy },
+    { id: 'vendor_mismatch',       label: 'Vendor Name Diff',   count: breakdown?.vendor_mismatch       || 0,    icon: Receipt },
+    { id: 'date_mismatch',         label: 'Date Discrepancy',   count: breakdown?.date_mismatch         || 0,    icon: Calendar },
   ];
 
   return (

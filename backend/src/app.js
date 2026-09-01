@@ -23,8 +23,23 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' }, // allow CSV downloads
 }));
 
+// Accept localhost dev + any Vercel deployment URL + explicit CLIENT_ORIGIN
+const ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://localhost:4173',
+  process.env.CLIENT_ORIGIN,
+].filter(Boolean);
+
 app.use(cors({
-  origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (Render health checks, curl, Postman)
+    if (!origin) return callback(null, true);
+    // Allow any *.vercel.app subdomain automatically
+    if (origin.endsWith('.vercel.app')) return callback(null, true);
+    if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+    callback(new Error(`CORS: origin '${origin}' not allowed`));
+  },
   methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Id'],
   credentials: true,

@@ -9,7 +9,8 @@ import {
   Sparkles,
   ShieldCheck,
   FileCheck2,
-  ArrowRight
+  ArrowRight,
+  X
 } from 'lucide-react';
 import UploadCard from '../components/UploadCard';
 import ProcessingWorkflow from '../components/ProcessingWorkflow';
@@ -36,7 +37,9 @@ export default function Reconciliation({ showToast, onDataUpdated }) {
 
   const allFilesSelected = bankFile && invoiceFile && paymentFile;
 
-  // 1-Click Sample loader
+  // 1-Click Sample loader — stores SAMPLE_FILES objects (not real File blobs).
+  // The service layer correctly skips FormData upload for sample file objects
+  // and sends the sessionId-based /start call instead.
   const handleLoadAllSampleFiles = () => {
     setBankFile(SAMPLE_FILES.bankStatement);
     setInvoiceFile(SAMPLE_FILES.invoices);
@@ -46,6 +49,9 @@ export default function Reconciliation({ showToast, onDataUpdated }) {
     }
   };
 
+  // Detect if a file object is a real browser File vs a sample POJO
+  const isRealFile = (f) => f instanceof File || f instanceof Blob;
+
   const handleStartReconciliation = async () => {
     if (!allFilesSelected) return;
 
@@ -54,8 +60,15 @@ export default function Reconciliation({ showToast, onDataUpdated }) {
     setCurrentStep(1);
 
     try {
+      // Only pass real File objects to uploadFiles — sample POJOs are skipped
+      const filesToUpload = {
+        bankFile:    isRealFile(bankFile)    ? bankFile    : null,
+        invoiceFile: isRealFile(invoiceFile) ? invoiceFile : null,
+        paymentFile: isRealFile(paymentFile) ? paymentFile : null,
+      };
+
       const response = await reconciliationService.startReconciliation(
-        { bankFile, invoiceFile, paymentFile },
+        filesToUpload,
         ({ step, name, message }) => {
           setCurrentStep(step);
           setStatusMessage(message);
@@ -63,20 +76,34 @@ export default function Reconciliation({ showToast, onDataUpdated }) {
       );
 
       setIsComplete(true);
-      setResultStats(response.stats);
+
+      // BUG-04 fix: safe access on response.stats — backend may return stats at top level
+      const stats = response.stats || response;
+      setResultStats({
+        totalTransactions: stats.totalTransactions ?? stats.total_transactions ?? 0,
+        matched:           stats.matched    ?? 0,
+        needsReview:       stats.needsReview ?? stats.needs_review ?? 0,
+        unmatched:         stats.unmatched  ?? 0,
+        matchRate:         stats.matchRate  ?? stats.match_rate   ?? 0,
+      });
 
       const txns = await reconciliationService.getTransactions();
       setReconciledTransactions(txns);
 
       if (onDataUpdated) onDataUpdated();
       if (showToast) {
+        const rate = stats.matchRate ?? stats.match_rate ?? 0;
+        const processed = response.totalProcessed ?? response.total_processed ?? (txns.length);
         showToast(
           'success',
           'Reconciliation Complete ✓',
-          `Processed ${response.totalProcessed} transactions with ${response.stats.matchRate}% match rate`
+          `Processed ${processed} transactions with ${rate}% match rate`
         );
       }
     } catch (err) {
+      // BUG-23 fix: reset processing state on error so UI is not stuck
+      setIsProcessing(false);
+      setCurrentStep(0);
       if (showToast) showToast('warning', 'Processing Error', err.message);
     }
   };
@@ -85,6 +112,9 @@ export default function Reconciliation({ showToast, onDataUpdated }) {
     setIsProcessing(false);
     setIsComplete(false);
     setCurrentStep(0);
+    setStatusMessage('');
+    setResultStats(null);
+    setReconciledTransactions([]);
     setBankFile(null);
     setInvoiceFile(null);
     setPaymentFile(null);
@@ -95,7 +125,7 @@ export default function Reconciliation({ showToast, onDataUpdated }) {
       await reconciliationService.updateTransactionStatus(id, newStatus, notes);
       const [updatedStats, updatedTxns] = await Promise.all([
         reconciliationService.getDashboardStats(),
-        reconciliationService.getTransactions()
+        reconciliationService.getTransactions(),
       ]);
       setResultStats(updatedStats);
       setReconciledTransactions(updatedTxns);
@@ -113,7 +143,7 @@ export default function Reconciliation({ showToast, onDataUpdated }) {
       await reconciliationService.updateTransactionStatus(id, 'matched', edits.notes, edits);
       const [updatedStats, updatedTxns] = await Promise.all([
         reconciliationService.getDashboardStats(),
-        reconciliationService.getTransactions()
+        reconciliationService.getTransactions(),
       ]);
       setResultStats(updatedStats);
       setReconciledTransactions(updatedTxns);
@@ -151,13 +181,26 @@ export default function Reconciliation({ showToast, onDataUpdated }) {
 
         {/* Top Controls */}
         <div className="flex items-center gap-3">
-          <button
-            onClick={handleLoadAllSampleFiles}
-            className="px-4 py-2 text-xs font-black text-[#0B3C2C] bg-[#D4E2D4] hover:bg-[#B8CEB8] border border-[#B8CEB8] rounded-xl flex items-center gap-2 transition-all shadow-2xs"
-          >
-            <Sparkles className="w-4 h-4 text-[#0B3C2C]" />
-            <span>Load Sample Q3 Files</span>
-          </button>
+          {/* BUG-23: Cancel button shown while processing (not complete) */}
+          {isProcessing && !isComplete && (
+            <button
+              onClick={handleResetReconciliation}
+              className="px-3.5 py-2 text-xs font-bold text-[#9E3626] bg-[#FDEBE8] hover:bg-[#F2C0B8] border border-[#F2C0B8] rounded-xl flex items-center gap-2 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Cancel</span>
+            </button>
+          )}
+
+          {!isProcessing && (
+            <button
+              onClick={handleLoadAllSampleFiles}
+              className="px-4 py-2 text-xs font-black text-[#0B3C2C] bg-[#D4E2D4] hover:bg-[#B8CEB8] border border-[#B8CEB8] rounded-xl flex items-center gap-2 transition-all shadow-2xs"
+            >
+              <Sparkles className="w-4 h-4 text-[#0B3C2C]" />
+              <span>Load Sample Q3 Files</span>
+            </button>
+          )}
 
           {isComplete && (
             <button
@@ -171,11 +214,10 @@ export default function Reconciliation({ showToast, onDataUpdated }) {
         </div>
       </div>
 
-      {/* Upload Zone */}
+      {/* Upload Zone — hidden while processing */}
       {!isProcessing && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {/* 1. Bank Statement Card */}
             <UploadCard
               title="Bank Statement"
               subtitle="Upload current A/C transactions"
@@ -187,8 +229,6 @@ export default function Reconciliation({ showToast, onDataUpdated }) {
               onRemove={() => setBankFile(null)}
               onLoadSample={() => setBankFile(SAMPLE_FILES.bankStatement)}
             />
-
-            {/* 2. Invoices Card */}
             <UploadCard
               title="Invoices"
               subtitle="Upload vendor tax invoices"
@@ -200,8 +240,6 @@ export default function Reconciliation({ showToast, onDataUpdated }) {
               onRemove={() => setInvoiceFile(null)}
               onLoadSample={() => setInvoiceFile(SAMPLE_FILES.invoices)}
             />
-
-            {/* 3. Payment Records Card */}
             <UploadCard
               title="Payment Records"
               subtitle="Upload gateway & payout ledger"
@@ -220,18 +258,14 @@ export default function Reconciliation({ showToast, onDataUpdated }) {
             <div className="flex items-center gap-3">
               <div
                 className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                  allFilesSelected
-                    ? 'bg-[#D4E2D4] text-[#0B3C2C]'
-                    : 'bg-[#EAE8DE] text-[#8C8C8C]'
+                  allFilesSelected ? 'bg-[#D4E2D4] text-[#0B3C2C]' : 'bg-[#EAE8DE] text-[#8C8C8C]'
                 }`}
               >
                 <ShieldCheck className="w-6 h-6" />
               </div>
               <div>
                 <h4 className="text-sm font-black text-[#1A1A1A]">
-                  {allFilesSelected
-                    ? 'All 3 Source Documents Ready'
-                    : 'Select or Load All 3 Datasets to Begin'}
+                  {allFilesSelected ? 'All 3 Source Documents Ready' : 'Select or Load All 3 Datasets to Begin'}
                 </h4>
                 <p className="text-xs text-[#6B786B] font-medium">
                   {allFilesSelected
@@ -287,25 +321,10 @@ export default function Reconciliation({ showToast, onDataUpdated }) {
                 {/* Filter Tabs */}
                 <div className="flex items-center gap-1.5 p-1 bg-[#EAE8DE] rounded-xl border border-[#DBD7CB] text-xs">
                   {[
-                    { id: 'all', label: `All (${reconciledTransactions.length})` },
-                    {
-                      id: 'matched',
-                      label: `Matched (${
-                        reconciledTransactions.filter((t) => t.status === 'matched').length
-                      })`,
-                    },
-                    {
-                      id: 'needs_review',
-                      label: `Needs Review (${
-                        reconciledTransactions.filter((t) => t.status === 'needs_review').length
-                      })`,
-                    },
-                    {
-                      id: 'unmatched',
-                      label: `Unmatched (${
-                        reconciledTransactions.filter((t) => t.status === 'unmatched').length
-                      })`,
-                    },
+                    { id: 'all',          label: `All (${reconciledTransactions.length})` },
+                    { id: 'matched',      label: `Matched (${reconciledTransactions.filter((t) => t.status === 'matched').length})` },
+                    { id: 'needs_review', label: `Needs Review (${reconciledTransactions.filter((t) => t.status === 'needs_review').length})` },
+                    { id: 'unmatched',    label: `Unmatched (${reconciledTransactions.filter((t) => t.status === 'unmatched').length})` },
                   ].map((tab) => (
                     <button
                       key={tab.id}
@@ -322,13 +341,11 @@ export default function Reconciliation({ showToast, onDataUpdated }) {
                 </div>
               </div>
 
-              {/* Transactions Table */}
               <TransactionTable
                 transactions={filteredResults}
                 onSelectTransaction={(txn) => setSelectedTransaction(txn)}
               />
 
-              {/* Next Steps Prompt */}
               <div className="p-4 rounded-2xl bg-[#EBF2EB] border border-[#B8CEB8] flex flex-col sm:flex-row items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <div className="p-2.5 rounded-xl bg-[#0B3C2C] text-[#FAF9F6]">
@@ -343,7 +360,6 @@ export default function Reconciliation({ showToast, onDataUpdated }) {
                     </p>
                   </div>
                 </div>
-
                 <button
                   onClick={() => navigate('/reports')}
                   className="px-4 py-2 text-xs font-bold text-[#FAF9F6] bg-[#0B3C2C] hover:bg-[#134E39] rounded-xl shadow-xs shadow-[#0B3C2C]/30 flex items-center gap-1.5 whitespace-nowrap"

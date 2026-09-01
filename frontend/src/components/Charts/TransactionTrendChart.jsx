@@ -1,33 +1,58 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
 
-export default function TransactionTrendChart() {
-  const trendData = [
-    { date: '18 Aug', matched: 142, review: 18, unmatched: 6 },
-    { date: '19 Aug', matched: 198, review: 24, unmatched: 11 },
-    { date: '20 Aug', matched: 235, review: 19, unmatched: 8 },
-    { date: '21 Aug', matched: 180, review: 28, unmatched: 14 },
-    { date: '22 Aug', matched: 260, review: 22, unmatched: 9 },
-    { date: '23 Aug', matched: 310, review: 15, unmatched: 12 },
-    { date: '24 Aug', matched: 284, review: 12, unmatched: 7 },
-  ];
+/**
+ * TransactionTrendChart
+ * @param {Array} transactions - full transaction list from the API (optional)
+ * When transactions are provided, groups them by date into the last 7 active days.
+ * Falls back to illustrative static data so the chart is never blank.
+ */
+export default function TransactionTrendChart({ transactions = [] }) {
+  const trendData = useMemo(() => {
+    if (transactions && transactions.length > 0) {
+      // Group by date, last 7 distinct dates
+      const dateMap = {};
+      for (const t of transactions) {
+        const d = t.date ? t.date.slice(0, 10) : null;
+        if (!d) continue;
+        if (!dateMap[d]) dateMap[d] = { matched: 0, review: 0, unmatched: 0 };
+        if (t.status === 'matched')      dateMap[d].matched++;
+        else if (t.status === 'needs_review') dateMap[d].review++;
+        else if (t.status === 'unmatched')    dateMap[d].unmatched++;
+      }
+      const sorted = Object.entries(dateMap)
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .slice(-7);
+
+      if (sorted.length > 0) {
+        return sorted.map(([date, counts]) => ({
+          date: new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+          matched:   counts.matched,
+          review:    counts.review,
+          unmatched: counts.unmatched,
+        }));
+      }
+    }
+    // Fallback illustrative data
+    return [
+      { date: '18 Aug', matched: 142, review: 18, unmatched: 6 },
+      { date: '19 Aug', matched: 198, review: 24, unmatched: 11 },
+      { date: '20 Aug', matched: 235, review: 19, unmatched: 8 },
+      { date: '21 Aug', matched: 180, review: 28, unmatched: 14 },
+      { date: '22 Aug', matched: 260, review: 22, unmatched: 9 },
+      { date: '23 Aug', matched: 310, review: 15, unmatched: 12 },
+      { date: '24 Aug', matched: 284, review: 12, unmatched: 7 },
+    ];
+  }, [transactions]);
 
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-[#1A1A1A] text-[#FAF9F6] p-3 rounded-xl shadow-xl text-xs border border-[#333]">
-          <p className="font-bold text-[#D4E2D4] mb-1.5 border-b border-[#333] pb-1">
-            {label} 2026
-          </p>
+          <p className="font-bold text-[#D4E2D4] mb-1.5 border-b border-[#333] pb-1">{label}</p>
           <div className="space-y-1">
             <p className="flex items-center justify-between gap-4 text-[#D4E2D4]">
               <span>Matched:</span>
@@ -59,36 +84,17 @@ export default function TransactionTrendChart() {
           Last 7 Days
         </span>
       </div>
-
       <div className="h-60 w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart
-            data={trendData}
-            margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-            barGap={3}
-          >
+          <BarChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }} barGap={3}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#EAE7DC" />
-            <XAxis
-              dataKey="date"
-              axisLine={false}
-              tickLine={false}
-              tick={{ fontSize: 11, fill: '#6B786B' }}
-            />
-            <YAxis
-              axisLine={false}
-              tickLine={false}
-              tick={{ fontSize: 11, fill: '#6B786B' }}
-            />
+            <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#6B786B' }} />
+            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#6B786B' }} />
             <Tooltip content={<CustomTooltip />} />
-            <Legend
-              verticalAlign="top"
-              align="right"
-              iconType="circle"
-              wrapperStyle={{ fontSize: '11px', paddingBottom: '10px' }}
-            />
-            <Bar dataKey="matched" name="Matched" fill="#0B3C2C" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="review" name="Needs Review" fill="#8A5C14" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="unmatched" name="Unmatched" fill="#9E3626" radius={[4, 4, 0, 0]} />
+            <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '11px', paddingBottom: '10px' }} />
+            <Bar dataKey="matched"   name="Matched"      fill="#0B3C2C" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="review"    name="Needs Review" fill="#8A5C14" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="unmatched" name="Unmatched"    fill="#9E3626" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>

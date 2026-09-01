@@ -20,6 +20,7 @@ export default function Dashboard({ showToast, onDataUpdated, currentUser }) {
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [recentTransactions, setRecentTransactions] = useState([]);
+  const [history, setHistory] = useState([]);
   const [selectedTransaction, setSelectedTransaction] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tableFilter, setTableFilter] = useState('all');
@@ -36,12 +37,14 @@ export default function Dashboard({ showToast, onDataUpdated, currentUser }) {
   const loadDashboardData = async () => {
     setLoading(true);
     try {
-      const [dashStats, txns] = await Promise.all([
+      const [dashStats, txns, hist] = await Promise.all([
         reconciliationService.getDashboardStats(),
-        reconciliationService.getTransactions()
+        reconciliationService.getTransactions(),
+        reconciliationService.getHistory(),
       ]);
       setStats(dashStats);
       setRecentTransactions(txns.slice(0, 7));
+      setHistory(hist);
     } catch (err) {
       if (showToast) showToast('warning', 'Failed to load dashboard', err.message);
     } finally {
@@ -125,7 +128,7 @@ export default function Dashboard({ showToast, onDataUpdated, currentUser }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Total Transactions"
-          value={stats?.scaledStats.totalTransactions || 1248}
+          value={stats?.scaledStats?.totalTransactions ?? 1248}
           change="+14.2%"
           changeType="positive"
           icon={Receipt}
@@ -136,8 +139,8 @@ export default function Dashboard({ showToast, onDataUpdated, currentUser }) {
 
         <StatCard
           title="Matched"
-          value={stats?.scaledStats.matched || 1043}
-          change="94.2% Auto"
+          value={stats?.scaledStats?.matched ?? 1043}
+          change={`${stats?.matchRate ?? 94}% Auto`}
           changeType="positive"
           icon={CheckCircle2}
           subtext="3-Way confidence > 90%"
@@ -147,7 +150,7 @@ export default function Dashboard({ showToast, onDataUpdated, currentUser }) {
 
         <StatCard
           title="Needs Review"
-          value={stats?.scaledStats.needsReview || 127}
+          value={stats?.scaledStats?.needsReview ?? 127}
           change="Action Required"
           changeType="negative"
           icon={AlertTriangle}
@@ -158,7 +161,7 @@ export default function Dashboard({ showToast, onDataUpdated, currentUser }) {
 
         <StatCard
           title="Unmatched"
-          value={stats?.scaledStats.unmatched || 78}
+          value={stats?.scaledStats?.unmatched ?? 78}
           change="-4.5% vs July"
           changeType="neutral"
           icon={XCircle}
@@ -168,20 +171,20 @@ export default function Dashboard({ showToast, onDataUpdated, currentUser }) {
         />
       </div>
 
-      {/* Chart Section */}
+      {/* Chart Section — use scaledStats for donut so numbers match KPI cards */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1">
           <ReconciliationDonutChart
-            matched={stats?.matched || 0}
-            needsReview={stats?.needsReview || 0}
-            unmatched={stats?.unmatched || 0}
+            matched={stats?.scaledStats?.matched ?? stats?.matched ?? 0}
+            needsReview={stats?.scaledStats?.needsReview ?? stats?.needsReview ?? 0}
+            unmatched={stats?.scaledStats?.unmatched ?? stats?.unmatched ?? 0}
           />
         </div>
         <div className="lg:col-span-1">
-          <TransactionTrendChart />
+          <TransactionTrendChart transactions={recentTransactions} />
         </div>
         <div className="lg:col-span-1">
-          <MonthlyOverviewChart />
+          <MonthlyOverviewChart batches={history} />
         </div>
       </div>
 

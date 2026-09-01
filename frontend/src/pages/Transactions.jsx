@@ -40,8 +40,11 @@ export default function Transactions({ showToast, onDataUpdated }) {
         sortBy,
         minAmount,
         maxAmount,
+        page,
+        limit: pageSize,
       });
-      setTransactions(data);
+      // Live API returns paginated slice; mock returns full array
+      setTransactions(Array.isArray(data) ? data : (data.transactions ?? []));
       setPage(1);
     } catch (err) {
       if (showToast) showToast('warning', 'Failed to load transactions', err.message);

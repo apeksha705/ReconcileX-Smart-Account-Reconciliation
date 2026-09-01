@@ -6,7 +6,9 @@ export default function NotificationToast({ toast, onClose }) {
 
   const { type = 'success', title, message } = toast;
 
-  const styles = {
+  // Define the styles map as a named const FIRST, then look up — prevents
+  // the "styles is not defined" ReferenceError when type is an unknown value.
+  const stylesMap = {
     success: {
       bg: 'bg-[#1A1A1A] text-[#FAF9F6] border-[#0B3C2C]',
       icon: CheckCircle2,
@@ -17,13 +19,19 @@ export default function NotificationToast({ toast, onClose }) {
       icon: AlertTriangle,
       iconColor: 'text-[#E8D8B0]',
     },
+    error: {
+      bg: 'bg-[#1A1A1A] text-[#FAF9F6] border-[#9E3626]',
+      icon: AlertTriangle,
+      iconColor: 'text-[#F2C0B8]',
+    },
     info: {
       bg: 'bg-[#1A1A1A] text-[#FAF9F6] border-[#333]',
       icon: Info,
       iconColor: 'text-[#D4E2D4]',
-    }
-  }[type] || styles.info;
+    },
+  };
 
+  const styles = stylesMap[type] || stylesMap.info;
   const IconComponent = styles.icon;
 
   return (
@@ -36,7 +44,7 @@ export default function NotificationToast({ toast, onClose }) {
         </div>
         <button
           onClick={onClose}
-          className="text-[#8C8C8C] hover:text-[#FAF9F6] p-0.5 transition-colors"
+          className="text-[#8C8C8C] hover:text-[#FAF9F6] p-0.5 transition-colors flex-shrink-0"
         >
           <X className="w-4 h-4" />
         </button>
